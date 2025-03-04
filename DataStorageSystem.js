@@ -1,3 +1,4 @@
+import { system, MolangVariableMap, world } from '@minecraft/server';
 /**
  * Storage System for Complex Data Types in Minecraft PE Dynamic Properties
  *
@@ -12,8 +13,6 @@
  * a set of all stored/loaded complex objects could be maintained to check whether
  * an object is already present, and if so, use a reference instead of duplicating it.
  */
-
-import { system, MolangVariableMap, world } from '@minecraft/server';
 
 /**
  * Registry for class constructors.
@@ -30,7 +29,7 @@ export let KlassenRegistry = null;
  */
 export function initializeClasses() {
     KlassenRegistry = {
-        'type': Class
+        'ClassTypeProperty': Class
     };
 }
 
@@ -39,13 +38,13 @@ export function initializeClasses() {
  * These properties (e.g. blocksMap, destroyedMap, outlineBlocks) are excluded
  * from storage to avoid unnecessary data or circular references.
  */
-const ignoreProperties = new Set(["prop"]);
+const ignoreProperties = new Set([]);
 
 /**
  * Set of types that require a customized storage system.
  * Objects of these types are handled individually, bypassing the default algorithm.
  */
-const typesWithCostumizedStorageSystem = new Set(["type"]);
+const typesWithCostumizedStorageSystem = new Set(["Array"]);
 
 /**
  * Map for abbreviating property keys during saving.
@@ -53,7 +52,7 @@ const typesWithCostumizedStorageSystem = new Set(["type"]);
  * with their abbreviated equivalents.
  */
 const abbreviationsMap = new Map([
-    ['prop', 'abbreviation']
+    ['Property', 'Abbreviation']
 ]);
 
 /**
@@ -61,7 +60,7 @@ const abbreviationsMap = new Map([
  * This restores the original property names from their abbreviated forms.
  */
 const abbreviationsLoad = new Map([
-    ['abbreviation', 'prop']
+    ['Abbreviation', 'Property']
 ]);
 
 /**
@@ -87,7 +86,7 @@ export class Save {
         } else {
             // Mark arrays with a type indicator.
             if (Array.isArray(instance)) {
-                storageDest.setDynamicProperty(`${saveKey}t`, "Array");
+                instance.type = "Array";
             }
             // If the instance requires a customized save, use the special handler.
             if (instance.type && typesWithCostumizedStorageSystem.has(instance.type) && costumizedSaveAllowed) {
@@ -112,16 +111,21 @@ export class Save {
      * @param {string} key - The base key for storage.
      * @param {*} storageDest - The storage destination.
      */
-    static costumizedSave(instance, key, storageDest) {
+    static costumizedSave(instance, saveKey, storageDest) {
         switch (instance.type) {
-            case "V":
-                // For type "V", store the type and the coordinate data separately.
-                storageDest.setDynamicProperty(`${key}t`, instance.type);
-                storageDest.setDynamicProperty(key, { x: instance.x, y: instance.y, z: instance.z });
+            case "Array":
+                const keysToSave = ["length", "type"];
+                storageDest.setDynamicProperty(`${saveKey}keys`, keysToSave.map(k => abbreviationsMap.has(k) ? abbreviationsMap.get(k) : k).join(","));
+                const keys = this.getKeys(instance);
+                keys.forEach(key => {
+                    const prop = instance[key];
+                    let saveKeyAbbreviated = abbreviationsMap.has(key) ? abbreviationsMap.get(key) : key;
+                    Save.saveInstance(prop, `${saveKey}${saveKeyAbbreviated}`, storageDest, 0);
+                });
                 break;
             default:
                 // Fallback to the default save mechanism.
-                this.saveInstance(instance, key, storageDest, 0, false);
+                this.saveInstance(instance, saveKey, storageDest, 0, false);
                 break;
         }
     }
@@ -174,12 +178,7 @@ export class Load {
             keys = keys.split(",");
         }
         // Special handling for arrays.
-        if (Array.isArray(instance)) {
-            const arrayLength = storageDest.getDynamicProperty(`${loadKey}length`);
-            instance.length = arrayLength;
-            instance.fill(1, 0, arrayLength);
-            keys = Save.getKeys(instance);
-        } else if (!instanceType) {
+        if (!instanceType) {
             instance = {};
         }
         // Recursively load each property.
@@ -206,14 +205,23 @@ export class Load {
      *
      * @returns {*} The reconstructed instance.
      */
-    static costumizedLoad(type, key, storageDest) {
+    static costumizedLoad(type, loadKey, storageDest) {
         switch (type) {
-            case "V":
-                // For type "V", create a new vector instance from stored data.
-                return new V3(storageDest.getDynamicProperty(key));
+            case "Array":
+                const arrayLength = storageDest.getDynamicProperty(`${loadKey}length`);
+                const instance = [];
+                instance.length = arrayLength;
+                instance.fill(1, 0, arrayLength);
+                let keys = Save.getKeys(instance);
+                keys = keys.filter(item => !ignoreProperties.has(item));
+                keys.forEach(key => {
+                    const loadedInstance = Load.loadInstance(`${loadKey}${key}`, storageDest, 0);
+                    instance[abbreviationsLoad.has(key) ? abbreviationsLoad.get(key) : key] = loadedInstance;
+                });
+                return instance;
             default:
                 // Fallback to the default load mechanism.
-                return this.loadInstance(key, storageDest, 0, false);
+                return this.loadInstance(loadKey, storageDest, 0, false);
         }
     }
 
