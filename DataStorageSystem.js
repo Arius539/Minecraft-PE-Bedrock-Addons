@@ -78,7 +78,7 @@ export class Save {
      * @throws {Error} If the provided instance is null.
      */
     static saveInstance(instance, saveKey, storageDest = world, operations = 0, costumizedSaveAllowed = true) {
-        if (instance == null) throw new Error("Instance was null, saveKey: " + saveKey);
+        if (instance == null) throw new Error("Instance is null, saveKey: " + saveKey);
         const keys = this.getKeys(instance);
         // If the instance has no properties to save or is a primitive/string, store it directly.
         if (keys.length == 0 && !Array.isArray(instance) || (typeof instance === "string" || instance instanceof String)) {
