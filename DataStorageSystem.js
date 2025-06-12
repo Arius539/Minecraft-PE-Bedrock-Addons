@@ -1,11 +1,18 @@
 import { system, MolangVariableMap, world } from '@minecraft/server';
 /*
-Optimization approaches
-    Improvement ideas, JSON formats in string format
-    Move primitives to Scoreboard/Tags, so that Dynamic Properties only contain complex objects; saves memory and CPU.
-    Serialize deep object graphs into a compressed JSON blob with stable ID references, if you want to stay with world properties.
-    Plan to migrate to the new HTTP client in the medium term, once your project is strictly server-side – this will bypass the 32 kB limits.
-    Write migration scripts that automatically transfer old keys into the new schema to avoid data loss in the case of API-breaking changes.
+Verbesserungs ansätze, Json Formate im Stringformat
+Verschiebe Primitive auf Scoreboard/Tags, damit Dynamic-Properties nur noch komplexe Objekte enthalten; spart Speicher und CPU.
+
+Serialisiere tiefe Objekt-Graphen in einen komprimierten JSON-Blob mit Stable-ID-Referenzen, falls du bei Welt-Properties bleiben willst.
+
+Plane mittelfristig den Umzug auf den neuen HTTP-Client, sobald dein Projekt zwingend server-seitig läuft – damit umgehst du alle 32 kB-Limits.
+
+Schreibe Migrations-Skripte, die alte Schlüssel automatisch ins neue Schema überführen, um Datenverlust bei API-Breaking-Changes zu vermeiden 
+Bedrock Wiki
+.
+Halte den Code schlank: Eine einzige serialize(instance, registry)-Funktion mit WeakMap-Tracking ersetzt mehrere hundert Zeilen spezieller Save/Load-Logik und ist leichter zu testen.
+
+
 */
 
 /**
@@ -36,6 +43,8 @@ export let KlassenRegistry = null;
 export function initializeClasses() {
     KlassenRegistry = {
         'Array': Array,
+        "Map": Map,
+        "Set": Set
     };
 }
 
@@ -46,7 +55,6 @@ export function initializeClasses() {
  * and helps to avoid redundant or circular references.
  */
 const ignoreProperties = new Set([
-
 ]);
 
 /**
@@ -54,7 +62,7 @@ const ignoreProperties = new Set([
  * These typically represent objects with unique serialization needs,
  * or specialized classes that don't follow the default property-based approach (e.g., a Vector class).
  */
-const typesWithCostumizedStorageSystem = new Set(["Array", "storageReference"]);
+const typesWithCostumizedStorageSystem = new Set(["Array", "storageReference", "Set", "Map"]);
 
 /**
  * A set of types that should be saved using reference-based storage instead of
@@ -128,10 +136,7 @@ export class Save {
             return;
         }
 
-        // If the instance is an Array, mark with a type for specialized loading.
-        if (Array.isArray(instance)) {
-            instance.type = "Array";
-        }
+        instance.type = Save.getType(instance);
 
         // Attempt reference-based storage for known object types.
         if (storageReferenceAllowed && typesForReferenceBasedStorageSystem.has(instance.type)) {
@@ -198,6 +203,20 @@ export class Save {
         }
     }
 
+    static getType(instance) {
+        // If the instance is an Array, mark with a type for specialized loading.
+        if (Array.isArray(instance)) {
+            return "Array";
+        }
+        if (instance instanceof Map) {
+            return "Map"
+        }
+        if (instance instanceof Map) {
+            return "Set"
+        }
+        return instance.type;
+    }
+
     /**
      * Saves instances that require a customized storage process.
      * Used for types specified in `typesWithCostumizedStorageSystem`.
@@ -208,23 +227,6 @@ export class Save {
      */
     static costumizedSave(instance, saveKey, storageDest) {
         switch (instance.type) {
-            case "V":
-                // For "V" (vector), store coordinates in a simple object alongside the type.
-                try {
-                    storageDest.setDynamicProperty(`${saveKey}t`, instance.type);
-                    storageDest.setDynamicProperty(saveKey, {
-                        x: instance.x,
-                        y: instance.y,
-                        z: instance.z
-                    });
-                } catch (error) {
-                    console.error(
-                        "Failed to save V3 property. " +
-                        JSON.stringify({ instance, saveKey })
-                    );
-                }
-                break;
-
             case "Array":
                 // For arrays, store 'length' and 'type' as properties, then individually save items.
                 try {
@@ -247,7 +249,56 @@ export class Save {
                     Save.saveInstance(prop, `${saveKey}${saveKeyAbbreviated}`, storageDest);
                 }
                 break;
+            case "Set":
+                try {
+                    // Store the type and size of the Set.
+                    storageDest.setDynamicProperty(`${saveKey}type`, "Set");
+                    storageDest.setDynamicProperty(`${saveKey}size`, instance.size);
 
+                    // Store each element under a sequential key.
+                    let idx = 0;
+                    for (const item of instance) {
+                        Save.saveInstance(
+                            item,
+                            `${saveKey}item${idx}`,
+                            storageDest
+                        );
+                        idx++;
+                    }
+                } catch (error) {
+                    console.error(
+                        "Failed to save Set property. " +
+                        JSON.stringify({ instance, saveKey })
+                    );
+                }
+                break;
+            case "Map":
+                try {
+                    // Store the type and size of the Map.
+                    storageDest.setDynamicProperty(`${saveKey}type`, "Map");
+                    storageDest.setDynamicProperty(`${saveKey}size`, instance.size);
+                    // Store each entry as separate key/value pairs.
+                    let idx = 0;
+                    for (const [key, value] of instance) {
+                        Save.saveInstance(
+                            key,
+                            `${saveKey}key${idx}`,
+                            storageDest
+                        );
+                        Save.saveInstance(
+                            value,
+                            `${saveKey}value${idx}`,
+                            storageDest
+                        );
+                        idx++;
+                    }
+                } catch (error) {
+                    console.error(
+                        "Failed to save Map property. " +
+                        JSON.stringify({ instance, saveKey })
+                    );
+                }
+                break;
             default:
                 // Fallback to the default save, but with custom saving disabled for this pass
                 // to avoid an infinite loop back into costumizedSave.
@@ -267,10 +318,15 @@ export class Save {
     static getKeys(instance, filter = true) {
         const allProps = Object.getOwnPropertyNames(instance);
         if (!allProps.length) return [];
-        return allProps.filter(
-            prop => (!filter || !ignoreProperties.has(prop)) && typeof instance[prop] !== 'function'
-        );
+
+        return allProps.reduce((acc, prop) => {
+            if ((filter && !ignoreProperties[prop]) && typeof instance[prop] !== 'function') {
+                acc.push(prop);
+            }
+            return acc;
+        }, []);
     }
+
 }
 
 /**
@@ -373,6 +429,38 @@ export class Load {
                     this.completeMissingProperties(loadedObj);
                     return loadedObj;
                 }
+
+            case "Set": {
+                const size = storageDest.getDynamicProperty(`${loadKey}size`);
+                const result = new Set();
+                // Load each element by index and add to the Set.
+                for (let i = 0; i < size; i++) {
+                    const item = Load.loadInstance(
+                        `${loadKey}item${i}`,
+                        storageDest
+                    );
+                    result.add(item);
+                }
+                return result;
+            }
+
+            case "Map": {
+                const size = storageDest.getDynamicProperty(`${loadKey}size`);
+                const result = new Map();
+                // Load each key/value pair by index and set in the Map.
+                for (let i = 0; i < size; i++) {
+                    const key = Load.loadInstance(
+                        `${loadKey}key${i}`,
+                        storageDest
+                    );
+                    const value = Load.loadInstance(
+                        `${loadKey}value${i}`,
+                        storageDest
+                    );
+                    result.set(key, value);
+                }
+                return result;
+            }
             default:
                 // Fallback to the default load mechanism, disabling custom load to avoid infinite loops.
                 return this.loadInstance(loadKey, storageDest, false);
