@@ -42,10 +42,4 @@ This module provides a comprehensive, production-ready system for persisting and
 - **Central Class Registry**  
   Maps string-identifiers to constructors, enabling seamless instantiation of custom classes when loading—methods and prototypes remain intact.
 
-- **Migration-Ready Schema Versioning**  
-  Provides hooks for writing migration scripts and remapping legacy keys, preventing data loss when evolving your storage schema.
-
-- **Future-Proof External Storage**  
-  Designed to switch to HTTP-based or external backends (e.g. REST APIs, Redis) on server-side setups, bypassing the native 32 kB per-property limits entirely.
-
 For a closer look at the code, check out the repository here: [Minecraft-PE-Dynamic-Storage](https://github.com/Arius539/Minecraft-PE-Bedrock-Addons/blob/main/DataStorageSystem.js)
