@@ -18,13 +18,34 @@ Welcome to the **Minecraft-PE-Bedrock-Addons** repository—a comprehensive coll
 
 The development approach is rooted in scientific rigor and best practices, ensuring that every contribution is robust, extensible, and maintainable. Whether you are a beginner seeking to understand the fundamentals of Minecraft scripting or an advanced developer pushing the boundaries of game modding, this repository provides a solid foundation for exploration and innovation.
 
-# 🗃️ Dynamic Data Storage for Minecraft PE
+# 🗃️ Advanced Dynamic Data Storage for Minecraft PE
 
-This project introduces a dynamic storage system tailored for Minecraft PE, enabling the recursive saving and loading of complex objects into the game’s dynamic property storage. Key aspects include:
+This module provides a comprehensive, production-ready system for persisting and restoring arbitrary JavaScript objects in Minecraft Bedrock’s Dynamic Properties, with full support for deep or cyclic object graphs.
 
-- **Memory Optimization:** Efficient abbreviation of property keys to conserve memory.
-- **Customized Data Handling:** Specialized treatment for specific data types (e.g., vector objects) ensuring accurate restoration.
-- **Robust Restoration:** Accurate re-establishment of both data and class methods.
-- **Central Class Registry:** Facilitates the recreation of class instances, ensuring scalability and maintainability.
+**Highlights:**
+
+- **Recursive Object-Graph Serialization**  
+  Transparently traverses any object tree—primitives, nested objects, Arrays, Maps, Sets or custom classes—and records every field under a compact key hierarchy.
+
+- **Circular-Reference & Deduplication**  
+  Automatically detects duplicate or cyclic references and emits lightweight pointer-objects instead of re-serializing, ensuring both correctness and minimal storage footprint.
+
+- **Type-Aware, Custom Serialization**  
+  Built-in handlers for Arrays, Maps and Sets capture lengths, sizes and element entries in a form that guarantees faithful reconstruction, including prototype and method preservation.
+
+- **Key Abbreviation & Ignoring**  
+  Replaces verbose property names with short codes and omits irrelevant or regenerable fields (e.g. dynamic caches), reducing both memory usage and I/O overhead.
+
+- **Error Isolation & Diagnostics**  
+  Each save/load step is wrapped in try/catch blocks with contextual logging, so individual failures don’t derange the overall persistence process.
+
+- **Central Class Registry**  
+  Maps string-identifiers to constructors, enabling seamless instantiation of custom classes when loading—methods and prototypes remain intact.
+
+- **Migration-Ready Schema Versioning**  
+  Provides hooks for writing migration scripts and remapping legacy keys, preventing data loss when evolving your storage schema.
+
+- **Future-Proof External Storage**  
+  Designed to switch to HTTP-based or external backends (e.g. REST APIs, Redis) on server-side setups, bypassing the native 32 kB per-property limits entirely.
 
 For a closer look at the code, check out the repository here: [Minecraft-PE-Dynamic-Storage](https://github.com/Arius539/Minecraft-PE-Bedrock-Addons/blob/main/DataStorageSystem.js)
