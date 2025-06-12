@@ -76,14 +76,14 @@ const typesForReferenceBasedStorageSystem = new Set([
  * - Key: The actual instance
  * - Value: The unique storage pointer string
  */
-const savedStorageRefernces = new Map();
+const savedStorageReferences = new Map();
 
 /**
  * Internal map that tracks loaded storage references.
  * - Key: The unique storage pointer string
  * - Value: An object containing the loading state and the actual instance once loaded.
  */
-const loadedStorageRefernces = new Map();
+const loadedStorageReferences = new Map();
 
 /**
  * A map for abbreviating property keys during saving.
@@ -130,7 +130,7 @@ export class Save {
             } catch (error) {
                 console.error(
                     "Failed to save primitive property. " +
-                    JSON.stringify({ instance, saveKey, costumizedSaveAllowed })
+                    JSON.stringify({ saveKey, costumizedSaveAllowed })
                 );
             }
             return;
@@ -141,8 +141,8 @@ export class Save {
         // Attempt reference-based storage for known object types.
         if (storageReferenceAllowed && typesForReferenceBasedStorageSystem.has(instance.type)) {
             // If we've already saved this instance, store a reference pointer to avoid duplication.
-            if (savedStorageRefernces.has(instance)) {
-                const pointer = savedStorageRefernces.get(instance);
+            if (savedStorageReferences.has(instance)) {
+                const pointer = savedStorageReferences.get(instance);
                 this.saveInstance(
                     { type: "storageReference", pointer: pointer },
                     saveKey,
@@ -154,7 +154,7 @@ export class Save {
             } else {
                 // Create a new unique pointer and store the object there.
                 const pointer = saveKey + V3Collection.generateRandomStringWithSymbols(35);
-                savedStorageRefernces.set(instance, pointer);
+                savedStorageReferences.set(instance, pointer);
 
                 // Save the full object at the new pointer (with references disabled to prevent infinite recursion).
                 this.saveInstance(instance, pointer, storageDest, true, false);
@@ -211,7 +211,7 @@ export class Save {
         if (instance instanceof Map) {
             return "Map"
         }
-        if (instance instanceof Map) {
+        if (instance instanceof Set) {
             return "Set"
         }
         return instance.type;
@@ -238,7 +238,7 @@ export class Save {
                 } catch (error) {
                     console.error(
                         "Failed to save array properties. " +
-                        JSON.stringify({ instance, saveKey })
+                        JSON.stringify({ saveKey })
                     );
                 }
                 // Recursively save each element of the array.
@@ -268,7 +268,7 @@ export class Save {
                 } catch (error) {
                     console.error(
                         "Failed to save Set property. " +
-                        JSON.stringify({ instance, saveKey })
+                        JSON.stringify({  saveKey })
                     );
                 }
                 break;
@@ -295,7 +295,7 @@ export class Save {
                 } catch (error) {
                     console.error(
                         "Failed to save Map property. " +
-                        JSON.stringify({ instance, saveKey })
+                        JSON.stringify({ saveKey })
                     );
                 }
                 break;
@@ -320,7 +320,7 @@ export class Save {
         if (!allProps.length) return [];
 
         return allProps.reduce((acc, prop) => {
-            if ((filter && !ignoreProperties[prop]) && typeof instance[prop] !== 'function') {
+            if ((filter && !ignoreProperties.has(prop)) && typeof instance[prop] !== 'function') {
                 acc.push(prop);
             }
             return acc;
@@ -414,8 +414,8 @@ export class Load {
                 // For reference types, check if the pointer has been loaded.
                 // If encountered during circular references, a placeholder is used and later completed.
                 const pointer = storageDest.getDynamicProperty(`${loadKey}pointer`);
-                if (loadedStorageRefernces.has(pointer)) {
-                    const loadingInfos = loadedStorageRefernces.get(pointer);
+                if (loadedStorageReferences.has(pointer)) {
+                    const loadingInfos = loadedStorageReferences.get(pointer);
                     if (loadingInfos.isLoaded) {
                         return loadingInfos.value;
                     } else {
@@ -423,9 +423,9 @@ export class Load {
                     }
                 } else {
                     // Mark the pointer as not yet loaded.
-                    loadedStorageRefernces.set(pointer, { isLoaded: false, value: null });
+                    loadedStorageReferences.set(pointer, { isLoaded: false, value: null });
                     const loadedObj = this.loadInstance(pointer, storageDest);
-                    loadedStorageRefernces.set(pointer, { isLoaded: true, value: loadedObj });
+                    loadedStorageReferences.set(pointer, { isLoaded: true, value: loadedObj });
                     this.completeMissingProperties(loadedObj);
                     return loadedObj;
                 }
@@ -497,8 +497,8 @@ export class Load {
         ) return;
         const keys = Save.getKeys(instance, false);
         if (keys.length <= 0) return;
-        if (instance.type == "storageReference" && loadedStorageRefernces.has(instance.pointer)) {
-            if (parent != null) parent[prop] = loadedStorageRefernces.get(instance.pointer).value;
+        if (instance.type == "storageReference" && loadedStorageReferences.has(instance.pointer)) {
+            if (parent != null) parent[prop] = loadedStorageReferences.get(instance.pointer).value;
             return;
         }
         for (let key of keys) {
